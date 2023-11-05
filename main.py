@@ -35,8 +35,20 @@ with open("comment_text.txt", "r") as file:
         comment_text = comment_text.strip()
         comment_texts.append(comment_text)
 
+proxies = []
+with open("proxies.txt", "r") as file:
+    for proxy in file:
+        proxy = proxy.strip()
+        proxies.append(proxy)
+
+
 print(
-    f"Загружено {len(accounts)} аккаунтов. {len(usernames)} имен. {len(tweets)} текстов твитов. {len(tweet_idd)} tweet id. {len(comment_texts)} текста комментариев\n"
+    f"Загружено {len(accounts)} аккаунтов. \
+{len(usernames)} имен. \
+{len(tweets)} текстов твитов. \
+{len(tweet_ids)} tweet id. \
+{len(comment_texts)} текста комментариев. \
+{len(proxies)} прокси\n"
 )
 choice = input(
     """Подписка по имени: 1
@@ -48,10 +60,10 @@ choice = input(
 )
 
 
-async def follow(account, usernames, semaphore):
+async def follow(account, usernames, proxy, semaphore):
     async with semaphore:
         for username in usernames:
-            async with aiohttp.ClientSession() as session:
+            async with proxy_session(proxy) as session:
                 twitter = TwitterClient(account, session)
                 try:
                     user = await twitter.request_user_data(username)
@@ -67,12 +79,12 @@ async def follow(account, usernames, semaphore):
 
 
 async def follow_between_accounts(
-    account, accounts, min_subs_count, max_subs_count, semaphore
+    account, accounts, min_subs_count, max_subs_count, proxy, semaphore
 ):
     async with semaphore:
 
         async def subscribe(account, subscriber):
-            async with aiohttp.ClientSession() as session:
+            async with proxy_session(proxy) as session:
                 subscriber_twitter = TwitterClient(
                     TwitterAccount(subscriber.auth_token), session
                 )
@@ -108,9 +120,9 @@ async def follow_between_accounts(
         print(f"{account} имеет {num_followers} подписчиков")
 
 
-async def do_tweet(account, tweet_text, semaphore):
+async def do_tweet(account, tweet_text, proxy, semaphore):
     async with semaphore:
-        async with aiohttp.ClientSession() as session:
+        async with proxy_session(proxy) as session:
             twitter = TwitterClient(account, session)
 
             print("account:", account, "tweet text:", tweet_text)
@@ -118,9 +130,9 @@ async def do_tweet(account, tweet_text, semaphore):
             print(f"Tweet id: {tweet_id}")
 
 
-async def do_retweet(account, tweet_id, semaphore):
+async def do_retweet(account, tweet_id, proxy, semaphore):
     async with semaphore:
-        async with aiohttp.ClientSession() as session:
+        async with proxy_session(proxy) as session:
             twitter = TwitterClient(account, session)
             print("account:", account, "tweet id:", tweet_id)
             print(
@@ -128,9 +140,9 @@ async def do_retweet(account, tweet_id, semaphore):
             )
 
 
-async def do_comment(account, tweet_id, comment_text, semaphore):
+async def do_comment(account, tweet_id, comment_text, proxy, semaphore):
     async with semaphore:
-        async with aiohttp.ClientSession() as session:
+        async with proxy_session(proxy) as session:
             twitter = TwitterClient(account, session)
             print("account:", account, "tweet id:", tweet_id)
             print(
@@ -138,13 +150,13 @@ async def do_comment(account, tweet_id, comment_text, semaphore):
             )
 
 
-async def main(usernames, accounts):
+async def main(usernames, accounts, proxies):
     semaphore = asyncio.Semaphore(1)
     tasks = []
     match choice:
         case "1":
-            for account in accounts:
-                task = asyncio.create_task(follow(account, usernames, semaphore))
+            for account, proxy in zip(accounts, proxies):
+                task = asyncio.create_task(follow(account, usernames, proxy, semaphore))
                 tasks.append(task)
             await asyncio.gather(*tasks)
         case "2":
@@ -154,33 +166,40 @@ async def main(usernames, accounts):
             max_subs_count = int(
                 input("Введите максимальное количество подписчиков (например 5): ")
             )
-            for account in accounts:
+            for account, proxy in zip(accounts, proxies):
                 task = asyncio.create_task(
                     follow_between_accounts(
-                        account, accounts, min_subs_count, max_subs_count, semaphore
+                        account,
+                        accounts,
+                        min_subs_count,
+                        max_subs_count,
+                        proxy,
+                        semaphore,
                     )
                 )
                 tasks.append(task)
             await asyncio.gather(*tasks)
         case "3":
-            for account, tweet in zip(accounts, tweets):
-                task = asyncio.create_task(do_tweet(account, tweet, semaphore))
+            for account, tweet, proxy in zip(accounts, tweets, proxies):
+                task = asyncio.create_task(do_tweet(account, tweet, proxy, semaphore))
                 tasks.append(task)
             await asyncio.gather(*tasks)
         case "4":
-            for account, tweet_id in zip(accounts, tweet_ids):
-                task = asyncio.create_task(do_retweet(account, tweet_id, semaphore))
+            for account, tweet_id, proxy in zip(accounts, tweet_ids, proxies):
+                task = asyncio.create_task(
+                    do_retweet(account, tweet_id, proxy, semaphore)
+                )
                 tasks.append(task)
             await asyncio.gather(*tasks)
         case "5":
-            for account, tweet_id, comment_text in zip(
-                accounts, tweet_ids, comment_texts
+            for account, tweet_id, comment_text, proxy in zip(
+                accounts, tweet_ids, comment_texts, proxies
             ):
                 task = asyncio.create_task(
-                    do_comment(account, tweet_id, comment_text, semaphore)
+                    do_comment(account, tweet_id, comment_text, proxy, semaphore)
                 )
                 tasks.append(task)
             await asyncio.gather(*tasks)
 
 
-asyncio.run(main(usernames, accounts))
+asyncio.run(main(usernames, accounts, proxies))
